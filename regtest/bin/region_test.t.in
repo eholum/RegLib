@@ -1,0 +1,608 @@
+#!@PERL@
+#_PERL_INSERT_SAO_COPYRIGHT_HERE_(2004-2005,2007)_
+#_PERL_INSERT_GPL_LICENSE_HERE_
+
+# Make sure INC path includes test utils and such
+@lib_paths = split /\s+/, $ENV{'ASCDS_INSTALL'};
+$ASCDS_INSTALL = shift @lib_paths;
+
+my $TEXEC_DIR = ".";
+
+unless ( -e "$TEXEC_DIR/allshapestest" ) {
+   if ( -d "./regtest/bin" )	
+   {  
+       $TEXEC_DIR = "./regtest/bin";
+   }
+   elsif ( -d "$ASCDS_INSTALL/test/bin/reglib" )
+   {
+       $TEXEC_DIR = "$ASCDS_INSTALL/test/bin/reglib";
+   }
+}
+unshift(@INC, $TEXEC_DIR);
+
+$RM = find_inpath( "rm", $ENV{'PATH'}, ':' );
+$MKDIR = find_inpath( "mkdir", $ENV{'PATH'}, ':' );
+$DIFF = find_inpath( "diff", $ENV{'PATH'}, ':' );
+
+use strict;
+use vars '$RM', '$MKDIR','$DIFF';
+
+##########################################################################
+# PROGRAMMER - SET THESE VARIABLES!
+my $id = '';
+my $semantic = 'region';
+my $script_name = '${semantic}${id}.t';
+
+# Turn off buffering
+#select(STDOUT); $| = 1;
+#
+# Set some variables used by 'sort'
+$ENV{'LC_COLLATE'}  = "en_US.ISO8859-1";
+$ENV{'LC_MESSAGES'} = "C";
+
+# Process Date
+my $date = `date +%d%b%Y_%H:%M:%S`;
+chop($date);
+my ($junk,$start_hours,$start_min,$start_sec ) = $date =~ /(.*_)(\d*):(\d*):(\d*)/;
+
+# set platform
+my $platform = `uname`;
+chop $platform;
+
+
+##########################################################################
+# Initialize some default values
+my $USER    = $ENV{'USER'};
+my $UPARM   = $ENV{'ASCDS_USER_PARAM'};
+my $version = $ENV{'ASCDS_VERSION'};
+my $home    = $ENV{'HOME'};
+my $thisdir = $ENV{'PWD'};
+my $testin  = "$ENV{'TESTIN'}/test_region";
+my $testout = "$ENV{'TESTOUT'}/region";
+my $testlog = "$ENV{'TESTLOG'}/region";
+my $testsav = "$ENV{'TESTSAV'}/region";
+my $testrun = $ENV{'TESTRUN'};
+my $printfile = *STDOUT;
+
+#
+#------------------------------------------------------------
+# Load Arguments
+my %inargs;
+%inargs = &parse_args(\@ARGV);
+
+#
+# Process Arguments
+
+# ***********
+# -h = Help
+# ***********
+if ( $inargs{"-h"} )
+{
+   print "Usage: \n";
+   print "   $script_name [ -iosfph ] \n";
+   print "      -h   Help ( this text ) \n";
+   print "\n";
+   print "      -o   Specify test output directory \n";
+   print "\n";
+   print "      -i   Specify test input directory \n";
+   print "\n";
+   print "      -s   Specify test saved output directory \n";
+   print "\n";
+   print "      -f   Specify log file \n";
+   print "\n";
+   print "      -p   Specify printed output file \n";
+   print "\n\n";
+   exit 0;
+}
+
+# ***********
+# -i = TESTIN directory
+# ***********
+if ( $inargs{'-i'} )
+{
+   $testin = $inargs{'-i'};
+}
+# ***********
+# -o = TESTOUT directory
+# ***********
+if ( $inargs{'-o'} )
+{
+   $testout = $inargs{'-o'};
+}
+# ***********
+# -s = TESTSAV directory
+# ***********
+if ( $inargs{'-s'} )
+{
+   $testsav = $inargs{'-s'};
+}
+# make sure testing directories exist
+unless ( -d $testlog ) { system( "$MKDIR -p $testlog" ); }
+unless ( -d $testout ) { system( "$MKDIR -p $testout" ); }
+unless ( -d $testin )
+{
+   print $printfile "ERROR: can't find input directory : $testin\n";
+   exit 1;
+}
+unless ( -d $testsav )
+{
+   print $printfile "ERROR: can't find saved output directory : $testsav\n";
+   exit 1;
+}
+
+# Clean up old log files
+my $comstr = "$RM -f ${testlog}/${semantic}${id}.log.*";
+system( $comstr );
+
+# Open log files
+
+# ***********
+# -p = verbose output file
+# ***********
+if ( $inargs{'-p'} )
+{
+   unless ( open PRINT_OUTPUT, ">>$inargs{'-p'}" )
+   {
+      print STDERR "ERROR: Failed to open verbose output file : $inargs{'-p'}\n";
+      exit 1;
+   }
+   $printfile = *PRINT_OUTPUT;
+   # turn off buffering to print file
+   select($printfile); $| = 1;
+}
+
+my $logfile;
+my $logfname = "$testlog/${semantic}${id}.log.$date";
+# ***********
+# -f = LOG file
+# ***********
+if ( $inargs{'-f'} )
+{
+   $logfname = $inargs{'-f'};
+}
+if ( open LOG_OUTPUT, ">>$logfname" )
+{
+   $logfile = *LOG_OUTPUT;
+}
+else
+{
+   print $printfile "ERROR: Failed to open log file : $logfname\n";
+   exit 1;
+}
+# turn off buffering for the logfile
+#select($logfile); $| = 1;
+
+######################### BEGIN TEST CODE ###################################
+
+my $toolname = ""; # PROGRAMMER - put tool name here
+my @testlist = 
+( 
+# PROGRAMMER - List the test ids here
+ 
+ "1",
+ "2",
+ "3",
+ "4",
+ "5",
+ "6",
+ "7",
+ "8",
+);
+my %test_blocks = 
+( 
+# PROGRAMMER - put lists of blocks and block types for each test
+# eg:
+# "1" => { "image" => [ 1, 3 ],
+#          "table" => [ 2, 4 ] },
+# "2" => { "list" => [ ] },...
+);
+my %test_words = 
+(
+# PROGRAMMER - put list of words to replace in a text output file
+#              This is only necessary if using the diff test for text files
+# eg:
+# $version => "ASCDS_VERSION"
+  $testin  => "<TESTIN>",
+  $testout => "<TESTOUT>",
+  "NaN"    => "nan",
+);
+
+unless ( ${TEXEC_DIR} )
+{
+   print $printfile "ERROR: Unable to find test executables:\n";
+   exit 1;
+}
+
+dt_print_mt_header( "001", $semantic, $logfile, $printfile, "Region Library" );
+		     
+# Prepare for main loop
+my @faillist = ( );
+my $err_msg = "";
+my $rc;
+my $time_user;
+my $time_sys;
+my $time_user_total = 0;
+my $time_sys_total = 0;
+
+
+#########################################################################
+# Run test
+
+# Init per-test error flag
+my $mismatch = 0;
+my $testid;
+my $test_string;
+
+# delete old outputs
+my $basename = sprintf "${semantic}_%sm%.2d", $id, $testid;
+system("$RM -f $testout/${basename}*");
+
+my @infiles = ( "${testin}/test_complex.reg" );
+my $outfile;
+my $savfile;
+
+foreach (@testlist) 
+{
+    $testid = $_;
+    $rc = 0;
+    $mismatch = 0;
+    $err_msg = "";
+
+    # set up file names
+    $outfile = "$testout/region_m00${testid}.txt";
+    $savfile = "$testsav/region_m00${testid}.txt";
+
+    # run the tool
+    close $logfile;
+
+    # Test 1 - ascii i/o test
+    if ($testid == 1) {
+      $test_string = "${TEXEC_DIR}/asciitest $infiles[0] $outfile  &>> $outfile";
+    }
+
+    # Test 2 - tests single shape creation; calculates area, pixellated
+    # area, extent, and whether or not point is inside region
+    if ($testid == 2) {
+      $test_string = "${TEXEC_DIR}/allshapestest &> $outfile";
+    }
+
+    # Test 3 - creates a region and appends three shapes; queries the
+    # region for max points, num shapes, shape number; also tests
+    # append, compare, copy, and invert
+    if ($testid == 3) {
+      $test_string = "${TEXEC_DIR}/shapeopstest &> $outfile";
+    }
+   
+    # Test 4 - tests converting coordinates in region, converting a 
+    # region to a list.
+    if ($testid == 4) { 
+      $test_string = "${TEXEC_DIR}/converttest &> $outfile";
+    }
+
+    # Test 5 - tests logical operators on regions (unions, exlclusions)
+    # etc.
+    if ($testid == 5) { 
+      $test_string = "${TEXEC_DIR}/logictest &> $outfile";
+    }
+
+    # Test 6 - tests public operations for regSHAPE objects.
+    if ($testid == 6) { 
+      $test_string = "${TEXEC_DIR}/shapetest &> $outfile";
+    }
+
+    # Test 7 - regression test for area of a polygon, bug 9575.
+    if ($testid == 7) { 
+      $test_string = "${TEXEC_DIR}/polytest &> $outfile";
+    }
+
+    if ($testid == 8) {
+      $test_string = "${TEXEC_DIR}/extenttest &> $outfile";
+    }
+
+    # Run tests      
+    dt_print_test_header( $testid, $test_string, $logfile, $printfile );
+    ( $rc, $time_user, $time_sys ) = dt_run_test( $test_string );
+
+    open $logfile, ">>$logfname";
+    select($logfile); $| = 1; select($printfile);
+    unless ( $rc == 0 )
+    {    
+      $err_msg = "ERROR: Test $testid failed to run\n";
+    }
+
+    # check the outputs
+   
+    # compare
+    $err_msg .= diff_test($outfile, "${outfile}_filt", $savfile, "${outfile}_sav", \%test_words, $logfname, "${outfile}_diff" );
+    unless ( $err_msg eq "" )
+    {
+        push( @faillist, $testid );
+   	$mismatch = 1;
+    }
+
+    dt_print_test_footer( $testid, $mismatch, $err_msg, $time_user, $time_sys, $logfile, $printfile );
+
+}
+
+
+$time_user_total += $time_user;
+$time_sys_total += $time_sys;
+
+
+if ( scalar @faillist > 0 )
+{
+   $rc = 1;
+}
+else
+{
+   $rc = 0;
+}
+
+$err_msg = "@faillist";
+dt_print_mt_footer( "001", $semantic, $rc, $err_msg, $time_user_total, $time_sys_total, 
+		        $logfile, $printfile, "Region Library" );
+
+
+close $logfile;
+close $printfile;
+exit $rc;
+
+
+#------------------------------------------------------------
+#  Function:  parse_args
+#
+#  Description:
+#    Create an associative array of arguments and their
+#    associated values (if any)
+#
+#------------------------------------------------------------
+sub parse_args {
+   my ( $argsref ) = @_;
+   my @arglist = @$argsref;
+   my %arghsh;
+   my ($ii, $jj);
+   
+   if ( scalar @arglist >= 0 )
+   {
+      for ( $ii = 0; $ii <= $#arglist; $ii++ )
+      {
+	 if ( $arglist[$ii] =~ /^-/ )
+	 {
+	    # A new argument tag
+	    my $tag = $arglist[$ii];
+	    my $argval = "";
+	    
+	    # Check for associated values
+	    for ($jj = $ii + 1; $jj <= $#arglist;  $jj++)
+	    {
+	       # Check for next argument tag
+	       if ( $arglist[$jj] =~ /^-/ ){ last; }
+	       
+	       if ( $jj == $ii+1 )
+	       {
+		  $argval = $arglist[$jj];
+	       }
+	       else
+	       {
+		  $argval = " $arglist[$jj]";
+	       }
+	    }
+	    $ii = $jj - 1;
+	    
+	    $arghsh{"$tag"} = $argval;
+	 } # end if New Arg. Tag
+      } # end argument loop
+   }
+   return(%arghsh);
+}
+
+
+sub find_inpath {
+   my ($file, $pathStr, $delim);
+   if(scalar @_ == 2) {
+      ($file, $pathStr) = @_;
+      $delim = ' ';
+   } else {
+      ($file, $pathStr, $delim) = @_;
+   }
+   
+   my @pathArr = split(/$delim/, $pathStr);
+   foreach my $path (@pathArr) {
+      if(-e "$path/$file") {
+         return "$path/$file";
+      }
+   }
+   return "";
+}
+
+
+# Print the minitest header
+sub dt_print_mt_header
+{
+   my ( $id, $semantic, $logfile, $printfile, $catagory ) = @_;
+
+   if ( $catagory eq "" ){ $catagory = "DataModel"; }
+
+   my $date = `date +%d%b%Y_%H:%M:%S`;
+   chop($date);
+   print $logfile "
+
+STARTING $catagory Tests - $date
+-----------------------------------------------------------------------------
+
+";
+   print $printfile "
+
+STARTING $catagory Tests 
+-----------------------------------------------------------------------------
+
+";
+}
+
+# Print the minitest footer
+sub dt_print_mt_footer
+{
+   my ( $num, $semantic, $status, $msg, $time_user, $time_sys, $logfile, $printfile, $catagory ) = @_;
+   
+   my $line = "";
+   if ( $catagory eq "" ){ $catagory = "DataModel"; }
+
+   print $logfile "FINISHED $catagory Tests \n";
+   print $printfile "FINISHED $catagory Tests  \n";
+   $line = "$status";
+   if ( $status == 0 )
+   {
+      $line = "PASSED";
+   }
+   else
+   {
+      $line = "FAILED";
+   }
+   if ( $msg ne "" )
+   {
+      $line .= " : $msg\n";
+   }
+   print $logfile "$line\n";
+   print $printfile "$line\n";
+   print $logfile 
+"TOTAL CPU TIME: USER: $time_user s.  SYS: $time_sys s.
+-----------------------------------------------------------------------------
+
+";
+   print $printfile 
+"TOTAL CPU TIME: USER: $time_user s.  SYS: $time_sys s.
+-----------------------------------------------------------------------------
+
+";
+}
+
+# Print per-test header
+sub dt_print_test_header
+{
+   my ( $num, $comstr, $logfile, $printfile, $kernel ) = @_;
+
+   print $logfile "RUNNING TEST $num ...\n";
+   print $printfile "RUNNING TEST $num ...\n";
+   print $logfile "$comstr\n";
+   print "$comstr\n";
+}
+
+sub dt_print_test_command_string
+{
+   my ( $comstr, $logfile, $printfile ) = @_;
+   print $logfile "$comstr\n";
+   #print $printfile "$comstr\n";
+}
+
+
+# Print per-test footer
+sub dt_print_test_footer
+{
+   my ( $num, $status, $err_msg, $time_user, $time_sys, $logfile, $printfile ) = @_;
+
+   my $isok;
+   if ( $status == 0 )
+   {
+      $isok = "OK";
+   }
+   else
+   {
+      $isok = "NOT-OK";
+   }
+   print $logfile "TEST $num: $isok\n";
+   print $printfile "TEST $num: $isok\n";
+   if ( $err_msg ne "" )
+   {
+      print $logfile "$err_msg\n";
+      print $printfile "$err_msg\n";
+   }
+   print $logfile 
+"CPU TIME:  USER: $time_user s.  SYS: $time_sys s.
+
+";
+   print $printfile 
+"CPU TIME:  USER: $time_user s.  SYS: $time_sys s.
+
+";
+}
+
+# Runs a command
+# Returns:
+#    1. the exit code of the command
+#    2. the CPU user time taken by the exec'd process
+#    3. the CPU system time taken by the exec'd process
+sub dt_run_test
+{
+   use Benchmark;
+   my ( $comstr ) = @_;
+   my $command = sprintf "system( q($comstr) )";
+
+   my $t = timeit( 1, $command );
+
+   return ( $?, $t->[3], $t->[4] );
+}
+
+
+sub diff_test
+{
+   my ($outfile, $outfile_filt, $savfile, $savfile_filt, $wordsref, $logfile, $diff_file) = @_;
+   if ( ! -e $outfile )
+   {
+      return "ERROR: outfile does not exist: $outfile\n";
+   }
+   if ( ! -e $savfile )
+   {
+      return "ERROR: savfile does not exist: $savfile\n";
+   }
+   my $rc;
+   my $msg;
+   
+   wordfilter( $outfile, $outfile_filt, $wordsref );
+   wordfilter( $savfile, $savfile_filt, $wordsref );
+
+   $msg .= zerotest( $outfile_filt );
+   my $comstr = "$DIFF $outfile_filt $savfile_filt > $diff_file 2>> $logfile";
+   $rc = system($comstr);
+   unless ( $rc == 0 )
+   {
+      $msg .= "ERROR: MISMATCH in $outfile_filt\n";
+   }
+   return $msg;
+}
+
+sub wordfilter
+{
+   my ($infile, $outfile, $wordsref) = @_;
+   my %words = %$wordsref;
+   my @wordlist = keys %words;
+   open INPUT, "<$infile" or return;
+   open OUTPUT, ">$outfile" or return;
+   my $line;
+   my $newline;
+   while ( $line = <INPUT> )
+   {
+      foreach my $word (@wordlist)
+      {
+	 $line =~ s/$word/$words{$word}/g;
+      }
+      print OUTPUT $line;
+   }
+   close OUTPUT;
+}
+
+sub zerotest
+{
+   my ( $filename ) = @_;
+   my $msg;
+   if ( -s $filename )
+   {
+      $msg = "";
+   }
+   else
+   {
+      $msg =  "ERROR; file $filename is of zero length\n";
+   }
+   return $msg;
+}
+
+
